@@ -14,8 +14,8 @@
 ;
 ; Currently we only support sample files with 8 bits, one channel.
 ;
-; TODO:
-; - perhaps change preload of all sounds to load on demand for faster init
+; Future improvements:
+; - perhaps change preload of all sounds to load on demand for faster init?
 
 !ifdef SOUND {
 !zone sound_support {
@@ -547,7 +547,7 @@ sound_effect
 	beq .return
 !ifdef TRACE_SOUND {
     jsr print_following_string
-    !pet "play_sound_effect ",0
+    !text "play_sound_effect ",0
     lda .current_effect
     jsr printa
     jsr space

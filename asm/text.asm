@@ -342,7 +342,7 @@ z_ins_read
 
 !ifdef TRACE_READTEXT {
 	jsr print_following_string
-	!pet "read_text ",0
+	!text "read_text ",0
 	ldx z_operand_value_low_arr
 	lda z_operand_value_high_arr
 	jsr printx
@@ -435,7 +435,7 @@ z_ins_read
 !ifdef DEBUG {
 !ifdef PREOPT {
 	jsr print_following_string
-	!raw "[preopt mode. type xxx to exit early.]",13,0
+	!text "[preopt mode. type xxx to exit early.]",13,0
 !ifdef Z5PLUS {
 	ldy #2
 } else {
@@ -1099,6 +1099,7 @@ getchar_and_maybe_toggle_darkmode
 	jmp .did_something
 +	
 }
+!ifndef TARGET_X16 {
 	ldx #8
 -	cmp .scroll_delay_keys,x
 	beq .is_scroll_delay_key
@@ -1126,6 +1127,13 @@ getchar_and_maybe_toggle_darkmode
 	jmp .did_something
 +
 
+	cmp #4 ; Ctrl-D to forget device# for saves
+	bne +
+	; Forget device# for saves
+	dec ask_for_save_device ; Normally 0. Even if we decrease 100 times, we still get the same effect
+	jmp .did_something
++
+}
 !ifndef Z5PLUS {
 !ifdef UNDO {
 	cmp #21 ; Ctrl-U for Undo
@@ -1135,15 +1143,10 @@ getchar_and_maybe_toggle_darkmode
 	stx undo_requested
 	dec undo_possible
 	jmp .did_something
-+	
++
 }
 }
-
-	cmp #4 ; Ctrl-D to forget device# for saves
-	bne .did_nothing
-	; Forget device# for saves
-	dec ask_for_save_device ; Normally 0. Even if we decrease 100 times, we still get the same effect
-	; Fall through to .did_something
+	jmp .did_nothing
 	
 .did_something
 	ldx #2
@@ -2141,13 +2144,15 @@ print_addr
 	jsr read_next_byte ; 0
 	pha
 	jsr read_next_byte ; 33
+	; abbreviation index is word, *2 for bytes, address is in first 128 KB
+	asl
 	tax
 	pla
-	jsr set_z_address
-	; abbreviation index is word, *2 for bytes
-	asl z_address + 2
-	rol z_address + 1 
-	rol z_address 
+	rol
+	ldy #0
+	bcc +
+	iny
++	jsr set_z_himem_address
 	; print the abbreviation
 	jsr print_addr
 	; restore state
@@ -2173,6 +2178,9 @@ print_addr
 	sta z_address + 1
 	pla
 	sta z_address
+!ifdef TARGET_X16 {
+	jsr x16_bank_z_address
+}
 	pla
 	tax
 	lda #0

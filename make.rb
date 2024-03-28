@@ -6,24 +6,28 @@ $is_windows = (ENV['OS'] == 'Windows_NT')
 
 if $is_windows then
 	# Paths on Windows
-    $X64 = "C:\\ProgramsWoInstall\\GTK3VICE-3.7.1-win64\\bin\\x64sc.exe -autostart-warp" # -autostart-delay-random"
-    $X128 = "C:\\ProgramsWoInstall\\GTK3VICE-3.7.1-win64\\bin\\x128.exe -80 -autostart-delay-random"
-    $XPLUS4 = "C:\\ProgramsWoInstall\\GTK3VICE-3.7.1-win64\\bin\\xplus4.exe -autostart-delay-random"
+	$X16 = "C:\\ProgramsWoInstall\\x16emu\\x16emu"
+	$X64 = "C:\\ProgramsWoInstall\\GTK3VICE-3.7.1-win64\\bin\\x64sc.exe -autostart-warp" # -autostart-delay-random"
+	$X128 = "C:\\ProgramsWoInstall\\GTK3VICE-3.7.1-win64\\bin\\x128.exe -80 -autostart-delay-random"
+	$XPLUS4 = "C:\\ProgramsWoInstall\\GTK3VICE-3.7.1-win64\\bin\\xplus4.exe -autostart-delay-random"
 	$MEGA65 = "\"C:\\Program Files\\xemu\\xmega65.exe\" -syscon" # -syscon is a workaround for a serious xemu bug
-    $C1541 = "C:\\ProgramsWoInstall\\GTK3VICE-3.7.1-win64\\bin\\c1541.exe"
-    $EXOMIZER = "C:\\ProgramsWoInstall\\Exomizer-3.1.0\\win32\\exomizer.exe"
-    $ACME = "C:\\ProgramsWoInstall\\acme0.97win\\acme\\acme.exe"
+	$C1541 = "C:\\ProgramsWoInstall\\GTK3VICE-3.7.1-win64\\bin\\c1541.exe"
+	$EXOMIZER = "C:\\ProgramsWoInstall\\Exomizer-3.1.0\\win32\\exomizer.exe"
+	$ACME = "C:\\ProgramsWoInstall\\acme0.97win\\acme\\acme.exe"
+	$ZIP = "\"C:\\Program Files\\7-Zip\\7z.exe\" a -bso0 -bse0"
 	$commandline_quotemark = "\""
 else
 	# Paths on Linux
-    $X64 = "x64 -autostart-delay-random"
-    $X128 = "x128 -autostart-delay-random"
-    #$X128 = "x128 -80col -autostart-delay-random"
-    $XPLUS4 = "xplus4 -autostart-delay-random"
-    $MEGA65 = "xemu-xmega65 -besure"
-    $C1541 = "c1541"
-    $EXOMIZER = __dir__ + "/exomizer/src/exomizer"
-    $ACME = "acme"
+	$X16 = "../x16-emulator/x16emu"
+	$X64 = "x64 -autostart-delay-random"
+	$X128 = "x128 -autostart-delay-random"
+	#$X128 = "x128 -80col -autostart-delay-random"
+	$XPLUS4 = "xplus4 -autostart-delay-random"
+	$MEGA65 = "xemu-xmega65 -besure"
+	$C1541 = "c1541"
+	$EXOMIZER = __dir__ + "/exomizer/src/exomizer"
+	$ACME = "acme"
+	$ZIP = "zip -r"
 	$commandline_quotemark = "'"
 end
 
@@ -39,7 +43,7 @@ $GENERALFLAGS = [
 #	'VICE_TRACE', # Send the last instructions executed to Vice, to aid in debugging
 #	'TRACE', # Save a trace of the last instructions executed, to aid in debugging
 #	'COUNT_SWAPS', # Keep track of how many vmem block reads have been done.
-#   'TIMING', # Store the lowest word of the jiffy clock in 0-->2 in the Z-code header
+#	'TIMING', # Store the lowest word of the jiffy clock in 0-->2 in the Z-code header
 #	'UNDO', # Support UNDO (using REU)
 ]
 
@@ -72,7 +76,9 @@ MODE_S2 = 3
 MODE_D2 = 4
 MODE_D3 = 5
 MODE_71 = 6
-MODE_81 = 7
+MODE_71D = 7
+MODE_81 = 8
+MODE_ZIP = 9
 
 DISKNAME_BOOT = 128
 DISKNAME_STORY = 129
@@ -123,6 +129,20 @@ $beyondzork_releases = {
     "r57-s871221" => "f384 14c2 00 a6 0b 64 23 57 62 97 80 84 a0 02 ca b2 13 44 d4 a5 8c 00 09 b2 11 24 50 9c 92 65 e5 7f 5d b1 b1 b1 b1 b1 b1 b1 b1 b1 b1 b1",
     "r60-s880610" => "f2dc 14c2 00 a6 0b 64 23 57 62 97 80 84 a0 02 ca b2 13 44 d4 a5 8c 00 09 b2 11 24 50 9c 92 65 e5 7f 5d b1 b1 b1 b1 b1 b1 b1 b1 b1 b1 b1"
 }
+
+$varicella_releases = {
+	"r1-s990831" => [
+		"11b48 0102 09 02", 
+		"13577 0102 09 02",
+		"26a85 0102 09 02",
+		"27284 0102 09 02",
+		"27381 0102 09 02",
+		"268c3 0404 04 02",
+		"273bc 0404 04 02",
+		"268cc 0204 04 00"
+	]
+}
+
 
 $d81interleave = [
 	# 0:No interleave
@@ -1027,7 +1047,9 @@ end
 def build_interpreter()
 	necessarysettings =  " --setpc #{$start_address} -DCACHE_PAGES=#{$CACHE_PAGES} -DSTACK_PAGES=#{$stack_pages} -D#{$ztype}=1"
 	necessarysettings +=  " -DCONF_TRK=#{$CONFIG_TRACK}" if $CONFIG_TRACK
-	if $target == 'mega65' then
+	if $target == 'x16' then
+		necessarysettings +=  " --cpu 65c02"
+	elsif $target == 'mega65' then
 		necessarysettings +=  " --cpu m65"
 	else
 		necessarysettings +=  " --cpu 6510"
@@ -1308,8 +1330,17 @@ def add_boot_file(finaldiskname, diskimage_filename)
 	end
 end
 
-def play(filename)
-	if $target == "mega65" then
+def play(filename, storyname)
+	if $target == "x16" then
+        #system("grep johan temp/acme_labels.txt")
+#		command = "cd #{filename} && ../#{$X16} -prg #{storyname}"
+        command = "cd #{filename} && #{$X16} -prg #{storyname.upcase}"
+		command += " -run"
+		command += " -dump B" # Ctrl-S from the emulator to dump memory
+		command += " -debug"
+		command += " -zeroram"
+		#command += " -scale 2"
+	elsif $target == "mega65" then
 		if defined? $MEGA65 then
 			command = "#{$MEGA65} -8 \"#{filename}\""
 		else
@@ -1885,6 +1916,76 @@ def build_71(storyname, diskimage_filename, config_data, vmem_data, vmem_content
 	nil # Signal success
 end
 
+def build_71D(storyname, d71_filename_1, d71_filename_2, config_data, vmem_data, vmem_contents,
+				preload_max_vmem_blocks, reserve_dir_track)
+
+	config_data[7] = 3 # 3 disks used in total
+	outfile1name = "#{$target}_#{storyname}_boot_story_1.d71"
+	outfile2name = "#{$target}_#{storyname}_story_2.d71"
+	disk1title = $disk_title + ($disk_title.length < 13 ? ' 1/2' : '')
+	disk2title = $disk_title + ($disk_title.length < 13 ? ' 2/2' : '')
+	disk1 = D71_image.new(disk_title: disk1title, diskimage_filename: d71_filename_1, 
+		is_boot_disk: true, reserve_dir_track: reserve_dir_track)
+	disk2 = D71_image.new(disk_title: disk2title, diskimage_filename: d71_filename_2, 
+		is_boot_disk: false, reserve_dir_track: nil)
+
+	# Figure out how to put story blocks on the disks in optimal way.
+	# Rule 1: Spread story data as evenly as possible, so heads will move less.
+	max_story_blocks = 9999
+	total_raw_story_blocks = ($story_size - $story_file_cursor) / 256
+	# Spread story data evenly over the two disks
+	max_story_blocks = total_raw_story_blocks / 2
+	
+	free_blocks_1 = disk1.add_story_data(max_story_blocks: max_story_blocks, add_at_end: false)
+	puts "Free disk blocks on disk #1 after story data has been written: #{free_blocks_1}" if $verbose
+	free_blocks_2 = disk2.add_story_data(max_story_blocks: 9999, add_at_end: false)
+	puts "Free disk blocks on disk #2 after story data has been written: #{free_blocks_2}" if $verbose
+
+	# Build bootfile + terp + preloaded vmem blocks as a file
+	vmem_preload_blocks = build_boot_file(preload_max_vmem_blocks, vmem_contents, free_blocks_1)
+	vmem_data[3] = vmem_preload_blocks
+	
+	# Add config data about boot disk / story disk 1
+	disk_info_size = 13 + disk1.config_track_map.length
+	last_block_plus_1 = 0
+	disk1.config_track_map.each{|i| last_block_plus_1 += (i & 0x3f)}
+# Data for disk: bytes used, device# = 0 (auto), Last story data sector + 1 (word), tracks used for story data, name
+	config_data += [disk_info_size, 0, last_block_plus_1 / 256, last_block_plus_1 % 256, 
+		disk1.config_track_map.length] + disk1.config_track_map
+	config_data += [DISKNAME_BOOT, DISKNAME_DISK, "/".ord, " ".ord, DISKNAME_STORY, DISKNAME_DISK, "1".ord, 0]  # Name: "Boot disk / Story disk 1"
+	config_data[4] += disk_info_size
+	
+	# Add config data about story disk 2
+	disk_info_size = 9 + disk2.config_track_map.length
+	disk2.config_track_map.each{|i| last_block_plus_1 += (i & 0x3f)}
+# Data for disk: bytes used, device# = 0 (auto), Last story data sector + 1 (word), tracks used for story data, name
+	config_data += [disk_info_size, 0, last_block_plus_1 / 256, last_block_plus_1 % 256, 
+		disk2.config_track_map.length] + disk2.config_track_map
+	config_data += [DISKNAME_STORY, DISKNAME_DISK, "2".ord, 0]  # Name: "Story disk 2"
+	config_data[4] += disk_info_size
+	
+	limit_vmem_data(vmem_data, 512 - config_data.length) # Limit config data to two sectors
+
+	config_data += vmem_data
+
+	#	puts config_data
+	disk1.set_config_data(config_data)
+	disk1.save()
+	disk2.save()
+	
+	# Add bootfile + terp + preloaded vmem blocks file to disk
+	if add_boot_file(outfile1name, d71_filename_1) != true
+		puts "ERROR: Failed to write bootfile/interpreter to disk."
+		exit 1
+	end
+	File.delete(outfile2name) if File.exist?(outfile2name)
+	File.rename(d71_filename_2, "./#{outfile2name}")
+	
+	$bootdiskname = "#{outfile1name}"
+	puts "Successfully built game as #{$bootdiskname} + #{outfile2name}"
+	nil # Signal success
+end
+
 def build_81(storyname, diskimage_filename, config_data, vmem_data, vmem_contents, 
 				preload_max_vmem_blocks)
 
@@ -1990,13 +2091,48 @@ def build_81(storyname, diskimage_filename, config_data, vmem_data, vmem_content
 	nil # Signal success
 end
 
+def build_zip(storyname, diskimage_filename, config_data, vmem_data, 
+              vmem_contents, preload_max_vmem_blocks)
+    # create folder if needed, and clear old contents, if any
+    foldername = "#{$target}_#{storyname}"
+    FileUtils.rm_rf(foldername)
+    FileUtils.rm_rf(foldername+".zip")
+    FileUtils.mkdir_p(foldername)
+
+    # Add terp and story file
+    FileUtils.cp($ozmoo_file, foldername+"/"+$file_name.upcase)
+#    FileUtils.cp($story_file, foldername+"/ZCODE")
+	IO.binwrite(foldername+"/ZCODE", $story_file_data);
+
+    # Create the zip file
+    command = "#{$ZIP} #{foldername}.zip #{foldername}"
+	puts command if $verbose
+    result = system(command)
+	if result
+		if $delete_zip_files > 0
+			FileUtils.rm_rf(foldername)
+		end
+		puts "Successfully built game as #{foldername}.zip"
+	else
+		msg = "The files are in the folder #{foldername}"
+		if $delete_zip_files > 1
+			FileUtils.rm_rf(foldername)
+			msg = "The files have been deleted."
+		end
+		puts "ERROR: There was a problem creating a zip archive. #{msg}"
+	end
+
+	$bootdiskname = foldername
+    nil # Signal success
+end
+
 def print_usage_and_exit
 	print_usage
 	exit 1
 end
 
 def print_usage
-	puts "Usage: make.rb [-t:target] [-S1|-S2|-D2|-D3|-71|-81|-P] -v"
+	puts "Usage: make.rb [-t:target] [-S1|-S2|-D2|-D3|-71|-71D|-81|-P|-ZIP] -v"
 	puts "         [-p:[n]] [-b] [-o] [-c <preloadfile>] [-cf <preloadfile>]"
 	puts "         [-sp:[n]] [-re[:0|1]] [-sl[:0|1]] [-s] " 
 	puts "         [-fn:<name>] [-f <fontfile>] [-cm:[xx]] [-in:[n]]"
@@ -2006,9 +2142,9 @@ def print_usage
 	puts "         [-ss[1-4]:\"text\"] [-sw:[nnn]] [-smooth[:0|1]]"
 	puts "         [-cb:[n]] [-cc:[n]] [-dmcc:[n]] [-cs:[b|u|l]] "
 	puts "         [-dt:\"text\"] [-rd] [-as(a|w) <soundpath>] "
-	puts "         [-u[:0|1|r]] <storyfile>"
-	puts "  -t: specify target machine. Available targets are c64 (default), c128, plus4 and mega65."
-	puts "  -S1|-S2|-D2|-D3|-71|-81|-P: build mode. Defaults to S1 (71 for C128, 81 for MEGA65). See docs."
+	puts "         [-u[:0|1|r]] [-df[:0|1|f]] <storyfile>"
+	puts "  -t: specify target machine. Available targets are c64 (default), c128, plus4, mega65 and x16."
+	puts "  -S1|-S2|-D2|-D3|-71|-81|-P|-ZIP: build mode. Defaults to S1 (71 for C128, 81 for MEGA65, ZIP for X16). See docs."
 	puts "  -v: Verbose mode. Print as much details as possible about what make.rb is doing."
 	puts "  -p: preload a maximum of n virtual memory blocks to make game faster at start."
 	puts "  -b: only preload virtual memory blocks that can be included in the boot file."
@@ -2045,6 +2181,7 @@ def print_usage
 	puts "  -asa: Add the .aiff sound files found at the specified path (003.aiff - 255.aiff)."
 	puts "  -asw: Add the .wav sound files found at the specified path (003.wav - 255.wav)."
 	puts "  -u: Add support for UNDO. Enabled by default for MEGA65. Use -u:r for RAM buffer (C128 only)"
+	puts "  -df: Delete files after creating zip archive in ZIP mode. 0 is default. f=force."
 	puts "  storyfile: path optional (e.g. infocom/zork1.z3)"
 end
 
@@ -2103,6 +2240,7 @@ $undo_ram = nil
 $sound_format = nil
 $disk_title = nil
 $scrollback_ram_pages = nil
+$delete_zip_files = nil
 reserve_dir_track = nil
 check_errors = nil
 dark_mode = nil
@@ -2136,10 +2274,16 @@ begin
 		elsif ARGV[i] =~ /^-p:(\d+)$/ then
 			preload_max_vmem_blocks = $1.to_i
 			limit_preload_vmem_blocks = true
-		elsif ARGV[i] =~ /^-t:(c64|c128|mega65|plus4)$/ then
+		elsif ARGV[i] =~ /^-t:(c64|c128|mega65|plus4|x16)$/ then
 			$target = $1
 			if $target == "mega65" then
-			    $start_address = 0x1001
+			    # $start_address = 0x1001
+				$start_address = 0x1800
+			elsif $target == "x16" then
+			    $start_address = 0x0801
+				$memory_end_address = 0xa000
+				$unbanked_ram_end_address = $memory_end_address
+				$normal_ram_end_address = $memory_end_address
 			elsif $target == "plus4" then
 			    $start_address = 0x1001
 				$memory_end_address = 0xfc00
@@ -2152,6 +2296,8 @@ begin
 				$normal_ram_end_address = $memory_end_address
 				$CACHE_PAGES = 4 # Cache is static size on C128
 			end
+		elsif ARGV[i] =~ /^-ZIP$/ then
+			mode = MODE_ZIP
 		elsif ARGV[i] =~ /^-P$/ then
 			mode = MODE_P
 			$CACHE_PAGES = 2 # We're not actually using the cache, but there may be a splash screen in it
@@ -2165,6 +2311,8 @@ begin
 			mode = MODE_D3
 		elsif ARGV[i] =~ /^-71$/ then
 			mode = MODE_71
+		elsif ARGV[i] =~ /^-71D$/ then
+			mode = MODE_71D
 		elsif ARGV[i] =~ /^-81$/ then
 			mode = MODE_81
 		elsif ARGV[i] =~ /^-ch(?::(\d{1,3}))?$/ then
@@ -2215,6 +2363,14 @@ begin
 			end
 			$sound_format = 'wav'
 			await_soundpath = true
+		elsif ARGV[i] =~ /^-df(?::([01f]))?$/ then
+			if $1 == '0'
+				$delete_zip_files = 0
+			elsif $1 == 'f'
+				$delete_zip_files = 2
+			else
+				$delete_zip_files = 1
+			end
 		elsif ARGV[i] =~ /^-u(?::([01r]))?$/ then
 			if $1 == nil
 				$undo = 1
@@ -2307,30 +2463,26 @@ rescue => e
 	exit 1
 end
 
-if $target == "mega65"
-	$file_name = 'autoboot.c65'
-end
-
-if custom_file_name
-	$file_name = custom_file_name
-end
-
 if $target =~ /^c(64|128)$/ and reu_boost == nil
 	reu_boost = 1
 end
 if reu_boost == 1
 	$GENERALFLAGS.push('REUBOOST') unless $GENERALFLAGS.include?('REUBOOST')
 	if $target !~ /^c(64|128)$/
-		puts "ERROR: REU Boost is not available for this platform." 
+		puts "ERROR: REU Boost is not supported for this target platform." 
 		exit 1
 	end
+end
+
+if $delete_zip_files == nil
+	$delete_zip_files = 0
 end
 
 if smooth_scroll == nil
 	smooth_scroll = 0
 end
 if $target !~ /^(c64|c128)$/ and smooth_scroll == 1
-	puts "ERROR: Smooth scroll is not available for this platform." 
+	puts "ERROR: Smooth scroll is not supported for this target platform." 
 	exit 1
 end
 
@@ -2389,6 +2541,8 @@ print_usage_and_exit() if await_soundpath or await_preloadfile or await_fontfile
 unless mode
 	if $target == 'c128'
 		mode = MODE_71
+	elsif $target == 'x16'
+		mode = MODE_ZIP
 	elsif $target == 'mega65'
 		mode = MODE_81
 	else 
@@ -2415,10 +2569,15 @@ if mode != MODE_81 and $target == 'mega65'
 	exit 1
 end
 
-# if mode == MODE_71 and $target != 'c128'
-	# puts "ERROR: Build mode 71 is not supported on this target platform."
-	# exit 1
-# end
+if mode != MODE_ZIP and $target == 'x16'
+	puts "ERROR: Only build mode ZIP is supported on this target platform."
+	exit 1
+end
+
+if mode == MODE_ZIP and $target != 'x16'
+	puts "ERROR: Build mode ZIP is not supported on this target platform."
+	exit 1
+end
 
 if mode == MODE_P and $target == 'c128'
 	puts "ERROR: Build mode P is not supported on this target platform."
@@ -2488,7 +2647,7 @@ if $sound_path
 #	puts $sound_files
 end
 
-$VMEM = (mode != MODE_P && $target != 'mega65')
+$VMEM = (mode != MODE_P && $target != 'mega65' && $target != 'x16')
 
 $GENERALFLAGS.push('DANISH_CHARS') if $char_map == 'da'
 $GENERALFLAGS.push('SWEDISH_CHARS') if $char_map == 'sv'
@@ -2524,6 +2683,11 @@ end
 
 if optimize and mode == MODE_P
 	puts "ERROR: Option -o can't be used with this build mode."
+	exit 1
+end
+
+if optimize and $target =~ /^(mega65|x16)$/
+	puts "ERROR: Option -o can't be used for this target platform."
 	exit 1
 end
 
@@ -2568,6 +2732,18 @@ extension = File.extname($story_file)
 filename = File.basename($story_file)
 storyname = File.basename($story_file, extension)
 $disk_title = storyname unless $disk_title
+
+if $target == "mega65"
+	$file_name = 'autoboot.c65'
+end
+if $target == "x16"
+	$file_name = storyname
+end
+
+if custom_file_name
+	$file_name = custom_file_name
+end
+
 
 begin
 	puts "Reading file #{$story_file}..." if $verbose
@@ -2616,8 +2792,11 @@ end
 if scrollback == 1 and $target == "plus4"
 	puts "ERROR: Scrollback buffer in REU is not supported on this target platform. Try e.g. -sb:6 to enable scrollback in RAM."
 	exit 1
+elsif scrollback > 0 and $target == "x16"
+	puts "ERROR: Scrollback buffer is not supported on this target platform."
+	exit 1
 elsif scrollback > 0 and $zcode_version == 6
-	puts "ERROR: Scrollback buffer not supported in version 6 games"
+	puts "ERROR: Scrollback buffer is not supported in version 6 games"
 	exit 1
 elsif scrollback == 0
 	$GENERALFLAGS.push('NOSCROLLBACK') unless $GENERALFLAGS.include?('NOSCROLLBACK') 
@@ -2645,6 +2824,7 @@ $static_mem_start = $story_file_data[14 .. 15].unpack("n")[0]
 release = $story_file_data[2 .. 3].unpack("n")[0]
 serial = $story_file_data[18 .. 23]
 storyfile_key = "r%d-s%s" % [ release, serial ]
+is_varicella = $zcode_version == 8 && $varicella_releases.has_key?(storyfile_key)
 is_trinity = $zcode_version == 4 && $trinity_releases.has_key?(storyfile_key)
 is_beyondzork = $zcode_version == 5 && $beyondzork_releases.has_key?(storyfile_key)
 $is_lurkinghorror = $zcode_version == 3 && $lurkinghorror_releases.has_key?(storyfile_key)
@@ -2690,13 +2870,36 @@ if is_trinity
 		patch_data_arr[i] = patch_data_arr[i].to_i(16)
 	end
 	if $story_file_data[patch_address .. (patch_address + 1)].unpack("n")[0] == patch_check
-		puts patch_data_arr.length
 		$story_file_data[patch_address .. (patch_address + patch_data_arr.length - 1)] =
 			patch_data_arr.pack("C*")
 		puts "Successfully patched Trinity story file."
 	else
 		puts "WARNING: Story file matches serial + version# for Trinity, but contents differ. Failed to patch."
 	end
+end
+
+if is_varicella
+	patch_success = true
+	patch_data_arr = $varicella_releases[storyfile_key]
+	patch_data_arr.each { |patch_data_string|
+#	patch_data_string = $varicella_releases[storyfile_key]	
+		patch_data_arr = patch_data_string.split(/ /)
+		patch_address = patch_data_arr.shift.to_i(16)
+		patch_check = patch_data_arr.shift.to_i(16)
+		# Change all hex strings to 8-bit unsigned ints instead, due to bug in Ruby's array.pack("H")
+		patch_data_arr.length.times do |i|
+			patch_data_arr[i] = patch_data_arr[i].to_i(16)
+		end
+		if $story_file_data[patch_address .. (patch_address + 1)].unpack("n")[0] == patch_check
+			$story_file_data[patch_address .. (patch_address + patch_data_arr.length - 1)] =
+				patch_data_arr.pack("C*")
+		else
+			patch_success = false
+			puts "WARNING: Story file matches serial + version# for Trinity, but contents differ (patch data string \"#{patch_data_string}\"). Failed to patch."
+			break
+		end
+	}
+	puts "Successfully patched Varicella story file." if patch_success
 end
 
 if $target == 'c128' and $interpreter_number == nil
@@ -2815,7 +3018,7 @@ if $target != 'c128' and limit_preload_vmem_blocks == false
 	case mode
 	when MODE_S1
 		$no_sector_preload = true if 170 - used_kb > 3
-	when MODE_S2, MODE_D3, MODE_81
+	when MODE_S2, MODE_D3, MODE_71D, MODE_81
 		$no_sector_preload = true
 	when MODE_D2, MODE_71
 		$no_sector_preload = true if 340 - used_kb > 3
@@ -2837,7 +3040,7 @@ if $target == 'c128'
 	end
 end
 
-if $target != 'mega65' and 
+if $target !~ /^(mega65|x16)$/ and 
 		$storystart + $dynmem_blocks * $VMEM_BLOCKSIZE > $normal_ram_end_address then
 	puts "ERROR: Dynamic memory is too big (#{$dynmem_blocks * $VMEM_BLOCKSIZE} bytes), would pass end of normal RAM. Maximum dynmem size is #{$normal_ram_end_address - $storystart} bytes." 
 	exit 1
@@ -2853,7 +3056,7 @@ if $target == 'c128' then
 	$vmem_blocks_in_ram += ($memory_end_address - 0x1200 - 256 * $stack_pages) / $VMEM_BLOCKSIZE 
 	$unbanked_vmem_blocks += $dynmem_blocks
 end
-if $target != 'mega65'
+if $target !~ /^(mega65|x16)$/
 	puts "VMEM blocks in RAM is #{$vmem_blocks_in_ram}" if $verbose
 	puts "Unbanked VMEM blocks in RAM is #{$unbanked_vmem_blocks}" if $verbose 
 	if	$unbanked_vmem_blocks < 1 and $story_size != $dynmem_blocks * $VMEM_BLOCKSIZE then
@@ -2957,7 +3160,7 @@ else # No preload data available
 	vmem_data += lowbytes;
 end
 
-if $target == 'mega65'
+if $target =~ /^(mega65|x16)$/
 	vmem_contents = '';
 else
 	vmem_contents = $story_file_data[0 .. $dynmem_blocks * $VMEM_BLOCKSIZE - 1]
@@ -3016,16 +3219,24 @@ when MODE_D3
 when MODE_71
 	diskimage_filename = File.join($TEMPDIR, "temp1.d71")
 	error = build_71(storyname, diskimage_filename, config_data.dup, vmem_data.dup, vmem_contents, preload_max_vmem_blocks, reserve_dir_track)
+when MODE_71D
+	d71_filename_1 = File.join($TEMPDIR, "temp1.d71")
+	d71_filename_2 = File.join($TEMPDIR, "temp2.d71")
+	error = build_71D(storyname, d71_filename_1, d71_filename_2, config_data.dup, vmem_data.dup, vmem_contents, 
+		preload_max_vmem_blocks, nil)
 when MODE_81
 	diskimage_filename = File.join($TEMPDIR, "temp1.d81")
 	error = build_81(storyname, diskimage_filename, config_data.dup, vmem_data.dup, vmem_contents, preload_max_vmem_blocks)
+when MODE_ZIP
+	diskimage_filename = File.join($TEMPDIR, "temp1.zip")
+	error = build_zip(storyname, diskimage_filename, config_data.dup, vmem_data.dup, vmem_contents, preload_max_vmem_blocks)
 else
 	puts "Unsupported build mode."
 	exit 1
 end
 
 if !error and auto_play then 
-	play("#{$bootdiskname}")
+	play("#{$bootdiskname}", $file_name)
 end
 
 
