@@ -666,7 +666,7 @@ z_ins_restart
 -	lda .restart_keys,x
 	beq +
 !ifdef TARGET_X16 {
-	jsr $fec3
+	jsr x16_kernal_kbdbuf_put
 } else {
 	sta keyboard_buff,x
 }
@@ -706,7 +706,7 @@ z_ins_restart
 -	lda .restart_code_keys,x
 	beq +
 !ifdef TARGET_X16 {
-	jsr $fec3
+	jsr x16_kernal_kbdbuf_put
 } else {
 	sta keyboard_buff,x
 }
@@ -1899,6 +1899,30 @@ wait_a_sec
 	; bne -
 	rts
 } else {
+!ifdef TARGET_X16 {
+kernal_delay_1ms
+	pha
+	txa
+	pha
+	tya
+	pha
+	ldy #227
+-	ldx #0
+	asl .delay_byte,x
+	asl .delay_byte,x
+	asl .delay_byte,x
+	asl .delay_byte,x
+	dey
+	bne -
+	pla
+	tay
+	pla
+	tax
+	pla
+	rts
+.delay_byte !byte 0
+}
+
 wait_a_sec
 ; Delay ~1.2 s so player can read the last text before screen is cleared
 	ldx #0
@@ -1907,12 +1931,6 @@ wait_a_sec
 } else {
 	ldy #5
 }
-; -	jsr kernal_delay_1ms
-	; dex
-	; bne -
-	; dey
-	; bne -
-	; rts
 
 wait_yx_ms
 -	jsr kernal_delay_1ms

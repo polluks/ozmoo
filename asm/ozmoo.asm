@@ -342,11 +342,10 @@
 }
 
 program_start
-
-		!ifdef TARGET_C128 {
-			lda #%00001110 ; 48K RAM0 (0-$c000)
-			sta $ff00
-		}
+!ifdef TARGET_C128 {
+	lda #%00001110 ; 48K RAM0 (0-$c000)
+	sta $ff00
+}
 	jmp .initialize
 
 !ifdef VMEM {
@@ -1075,8 +1074,10 @@ game_id		!byte 0,0,0,0
 
 	jsr deletable_screen_init_2
 
+!ifndef TARGET_X16 {
 	lda #0
 	sta keyboard_buff_len
+}
 
 	jsr z_init
 
@@ -1482,7 +1483,7 @@ NEED_CALC_DYNMEM = 1
 
 
 !ifndef VMEM {
-!ifndef TARGET_MEGA65 {
+!ifndef TARGET_MEGA65_OR_X16 {
 SIMPLE_NON_VMEM = 1
 }
 }
@@ -1864,7 +1865,6 @@ deletable_init_start
 }
 }
 
-
 !ifdef TARGET_X16 {
     lda #$0e
     jsr $ffd2
@@ -1922,8 +1922,10 @@ deletable_init_start
 	jsr init_mega65
 }
 
+!ifndef TARGET_X16 { ; For X16, this is done by printing a character at the start of deletable_init_start
 	lda #$80
 	sta charset_switchable
+}
 	lda #0
 	sta mempointer
 
@@ -1938,22 +1940,20 @@ deletable_init_start
 ; pcrc: RAM in bank 1, RAM everywhere
 c128_mmu_values !byte $0e,$3f,$7f
 }
-!ifdef TARGET_X16 {
-x16_statmem_already_loaded !byte 0
-}
-!ifdef TARGET_MEGA65 {
+!ifdef TARGET_MEGA65_OR_X16 {
 .first_value = z_temp
 .different_values !byte 0
-m65_statmem_already_loaded !byte 0
-m65_attic_checksum_page = ($08000000 + 512 * 1024) / 256
+m65_x16_statmem_already_loaded !byte 0
 }
 
 deletable_init
 	cld
 
+!ifndef TARGET_X16 {
 	; Set only space, del, cursor to repeat
 	lda #0
 	sta key_repeat
+}
 
 !ifdef TARGET_C128 {
 	jsr c128_setup_mmu
@@ -1976,12 +1976,14 @@ deletable_init
 
 
 ; Read and parse config from boot disk
+!ifndef TARGET_X16 {
 	ldy CURRENT_DEVICE
 	cpy #8
 	bcc .pick_default_boot_device
 	cpy #16
 	bcc .store_boot_device
 .pick_default_boot_device
+}
 	ldy #8
 .store_boot_device
 	sty boot_device ; Boot device# stored
@@ -1991,6 +1993,29 @@ deletable_init
 	jsr x16_load_header
 	jsr calc_dynmem_size
 	; Header of game on disk is now loaded, starting at $5f00
+
+!ifdef Z3PLUS {
+	ldy #header_filelength
+	lda $5f00,y
+	sta .first_value
+
+-	lda $5f00,y
+	cmp .first_value
+	beq +
+	inc .different_values
++	cmp m65_x16_checksum_quad - header_filelength,y
+	bne .must_load_statmem
+	iny
+	cpy #header_filelength + 4 ; Compare file length (2 bytes) + checksum (2 bytes)
+	bcc -
+	; Header values for file length and checksum are indentical
+	lda .different_values
+	beq .must_load_statmem ; All four bytes have the same value. Header can't be trusted.
+	dec m65_x16_statmem_already_loaded ; Set it to $ff
+	jmp ++ 
+.must_load_statmem
+++
+}
 
 	lda #0
 	sta reu_last_disk_end_block
@@ -2015,8 +2040,8 @@ deletable_init
 	bne -
 	sta z_temp + 4
 
-	bit x16_statmem_already_loaded
-	beq +
+	bit m65_x16_statmem_already_loaded
+	bpl +
 
 	; We are only to load dynmem
 	ldy #header_static_mem
@@ -2035,15 +2060,12 @@ deletable_init
 	jsr calc_dynmem_size
 	; Header of game on disk is now loaded, starting at beginning of Attic RAM
 
-    ; check stored copy of header data (filelength, checksum) in attic ram
+    ; check stored copy of header data (filelength, checksum)
     ; to see if the game file has already been loaded. This happens if
     ; we restart the game.
 !ifdef Z3PLUS {
-	lda #<m65_attic_checksum_page
-	sta mempointer + 1
-	lda #>m65_attic_checksum_page
-	sta mempointer + 2
 	ldz #header_filelength
+	ldx #0
 	lda [dynmem_pointer],z
 	sta .first_value
 
@@ -2051,15 +2073,16 @@ deletable_init
 	cmp .first_value
 	beq +
 	inc .different_values
-+	cmp [mempointer],z
++	cmp m65_x16_checksum_quad,x
 	bne .must_load_statmem
 	inz
+	inx
 	cpz #header_filelength + 4 ; Compare file length (2 bytes) + checksum (2 bytes)
 	bcc -
 	; Header values for file length and checksum are indentical
 	lda .different_values
 	beq .must_load_statmem ; All four bytes have the same value. Header can't be trusted.
-	dec m65_statmem_already_loaded ; Set it to $ff
+	dec m65_x16_statmem_already_loaded ; Set it to $ff
 
 .must_load_statmem
 }
@@ -2098,8 +2121,8 @@ deletable_init
 	bne -
 	sta z_temp + 4
 	
-	bit m65_statmem_already_loaded
-	beq +
+	bit m65_x16_statmem_already_loaded
+	bpl +
 
 	; We are only to load dynmem
 	ldz #header_static_mem
@@ -2165,18 +2188,7 @@ deletable_init
 	jsr auto_disk_config
 ;	jsr init_screen_colours
 } else { ; End of !ifdef VMEM
-!ifdef TARGET_MEGA65 {
-	ldy boot_device ; Boot device# stored
-	sty disk_info + 4 ; Device# for save disk
-	sty disk_info + 4 + 8 ; Device# for boot/story disk
-	; Store boot device in current_disks
-	lda #8 ; Index of story disk in disk_info - 3
-	sta current_disks - 8,y
-
-	lda #$ff ; Use REU
-	sta use_reu
-}
-!ifdef TARGET_X16 {
+!ifdef TARGET_MEGA65_OR_X16 {
 	ldy boot_device ; Boot device# stored
 	sty disk_info + 4 ; Device# for save disk
 	sty disk_info + 4 + 8 ; Device# for boot/story disk
@@ -2231,7 +2243,7 @@ deletable_init
 }
 
 !ifdef TARGET_MEGA65 {
-	bit m65_statmem_already_loaded
+	bit m65_x16_statmem_already_loaded
 	bmi + 
 ;	jsr m65_load_statmem
 !ifdef SOUND {
@@ -2245,7 +2257,7 @@ deletable_init
 	jsr init_screen_colours
 }
 !ifdef TARGET_X16 {
-	bit x16_statmem_already_loaded
+	bit m65_x16_statmem_already_loaded
 	bmi + 
 	jsr init_screen_colours
 +
@@ -2321,24 +2333,33 @@ deletable_init
 
 
 !ifdef TARGET_MEGA65 {
-
 !ifdef Z3PLUS {
-	; Store header values for file length and checksum in Attic RAM to say the game has been loaded
+	; Store header values for file length and checksum to say the game has been loaded
 
 	; dynmem_pointer may have been altered by read_word_from_far_dynmem
 	lda #$0
 	sta dynmem_pointer
 	sta dynmem_pointer + 1
 
-	lda #<m65_attic_checksum_page
-	sta mempointer + 1
-	lda #>m65_attic_checksum_page
-	sta mempointer + 2
 	ldz #header_filelength
+	ldx #0
 -	lda [dynmem_pointer],z
-	sta [mempointer],z
+	sta m65_x16_checksum_quad,x
 	inz
+	inx
 	cpz #header_filelength + 4 ; Compare file length (2 bytes) + checksum (2 bytes)
+	bcc -	
+}
+}
+!ifdef TARGET_X16 {
+!ifdef Z3PLUS {
+	; Store header values for file length and checksum to say the game has been loaded
+
+	ldy #header_filelength
+-	lda $5f00,y
+	sta m65_x16_checksum_quad - header_filelength,y
+	iny
+	cpy #header_filelength + 4 ; Compare file length (2 bytes) + checksum (2 bytes)
 	bcc -	
 }
 }
@@ -2778,7 +2799,7 @@ x16_load_header
 	bne ++ ; Always branch
 
 x16_load_dynmem_maybe_statmem
-	ldx x16_statmem_already_loaded
+	ldx m65_x16_statmem_already_loaded
 	beq ++ ; Statmem is not loaded => load entire zcode file
 	ldx nonstored_pages
 	stx x16_reu_load_page_limit
@@ -2809,7 +2830,7 @@ m65_load_header
 	bne ++ ; Always branch
 
 m65_load_dynmem_maybe_statmem
-	ldx m65_statmem_already_loaded
+	ldx m65_x16_statmem_already_loaded
 	beq ++ ; Statmem is not loaded => load entire zcode file
 	ldx nonstored_pages
 	stx m65_reu_load_page_limit
