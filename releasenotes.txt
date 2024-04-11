@@ -2,15 +2,42 @@ RELEASE NOTES
 
 Upcoming release
 
+================================================
+Release 14.14: 10 April 2024
+
+New/changed features:
+- Made a 255 byte command history buffer the default on X16, just like on MEGA65
+- Set border colour on X16
+- Changed savefile prefix (all platforms), Zcode filename and font filename (X16 only), to make sure boot file is listed first on X16
+- User can create a .ozmoorc file to set paths to executables, e.g. X16 = C:\emu\x16emu.exe. .ozmoorc can be located in $OZMOO_HOME, cwd, or $HOME
+
+Optimizations:
+- Made scrolling 3.5 times faster on X16
+- Made printing a character faster on X16
+- Unified some MEGA65 + X16 code for loading story file into memory, for ease of maintenance
+
+Bugfixes:
+- Listing save files didn't work correctly if scrollback buffer was enabled
+- Restart loaded entire story file on MEGA65, if a custom font was used
+- A conditional jump in the code could break because it had to jump too far, if you had smooth scroll, scrollback buffer and undo enabled.
+- A scrollback buffer in regular RAM made Beyond Zork builds break
+- Border colour was sometimes set incorrectly on X16
+- Using a custom font on X16 made the font stay after QUIT
+
+================================================
+Release 14.7: 2 April 2024
+
 New/changed features:
 - Made Quit work reliably on X16, and without resetting the computer.
-- Made restart fast on X16 (don't reload statmem after restart)
+- Made restart fast on X16 (only reload dynamic part of gamefile after restart)
+- Enabled scroll speed control and tear-free scrolling on X16
+- Made Z-machine beeps work on X16
+- Added support for custom fonts on X16
 
 Optimizations:
 - Moved print_buffer, print_buffer2, memory_buffer and directory_buffer to leave more continuous space for future use.
 - Made printing of a buffered line much faster on X16
-- Made clearing a line, a window or the entire screen much faster on X16
-- Made clearing a line, a window or the entire screen faster on MEGA65
+- Made clearing a line, a window or the entire screen much faster on X16, and a bit faster on MEGA65
 
 Bugfixes:
 - Routine to cause delay on X16 was incorrect, could crash game when saving game.

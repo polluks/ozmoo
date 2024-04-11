@@ -18,7 +18,7 @@ paths_else_have_begun = false
 File.readlines('../make.rb', chomp: true).each do |line|
 	paths_have_begun = true if line =~ /^\s*if \$is_windows then/
 	paths_else_have_begun = true if line =~ /^\s*else/
-	if paths_have_begun and line =~ /\$C1541\s*=\s*"(.*)"\s*$/
+	if paths_have_begun and line =~ /\'C1541'\s*=>\s*"(.*)"\s*,\s*$/
 		$C1541 = unescape($1) if paths_else_have_begun == $is_linux
 	end
 	break if paths_have_begun and line == 'end'
@@ -112,7 +112,11 @@ def finalize_test(build_result, problem, outfiles)
 				end
 
 				if File.exists?(filename) then
-					File.delete(filename)
+					if File.directory?(filename) then
+						Dir.delete(filename)
+					else
+						File.delete(filename)
+					end
 				else
 					puts "EXPECTED FILE MISSING: #{filename}"
 					is_ok = false
@@ -154,6 +158,10 @@ minizork = '../examples/minizork.z3'
 dragontroll = '../examples/dragontroll.z5'
 
 show_dir = {'*SHOW' => 1}
+
+dir = 'x16_minizork'
+expect_success(minizork, 'x16', '-ZIP -re -fn:hello -bc:0 -dc:2:3 -ic:4 -sc:4 -dmdc:3:2 -dmic:4 -dmsc:4 -df:0 -dt:goodbye -f ../fonts/sv/PXLfont-rf-SV.fnt -cm:sv -in:3 -ch -cb:30 -cs:b -sw:30 -ss1:"123456789 123456789 123456789 123456789" -ss2:"123456789 123456789 123456789 123456789" -ss4:"123456789 123456789 123456789 123456789" -ss3:"123456789 123456789 123456789 123456789"', 
+	{"#{dir}.zip" => 1, "#{dir}/HELLO" => 1, "#{dir}/[ZCODE]" => 1, "#{dir}/[FONT]" => 1, "#{dir}" => 1})
 
 expect_failure(dragontroll, 'c64', '-P -u', 'ERROR: Undo is not supported for build mode P', false, nil)
 
