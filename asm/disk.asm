@@ -718,14 +718,26 @@ z_ins_restart
 }
 	rts
 
+!ifdef TARGET_X16 {
+.restart_code_string
+	!pet 147,"new",13,13,13,"lO",34,":"
+!source "../temp/file-name.asm"
+    !pet 34,","
+.device_no
+	!pet "08",17,17,17,17,13,"rU",13,13,0
+.restart_code_keys
+	!byte 19,13,13,13,00
+} else {
 .restart_code_string
 	!pet 147,"lO",34,":"
-!source "file-name.asm"
+!source "../temp/file-name.asm"
     !pet 34,","
 .device_no
 	!pet "08",17,17,17,17,13,"rU",13,13,0
 .restart_code_keys
 	!byte 19,13,13,0
+}
+
 .restart_code_end
 
 }
@@ -1872,6 +1884,33 @@ interval_length = 30 ; Unit: ms
 
 
 !ifdef TARGET_C128 {
+kernal_delay_1ms
+	pha
+	txa
+	pha
+	tya
+	pha
+	ldy #57
+	lda reg_2mhz
+	and #1
+	bne +
+	ldy #35
++
+-	ldx #0
+	asl .delay_byte,x
+	asl .delay_byte,x
+	asl .delay_byte,x
+	asl .delay_byte,x
+	dey
+	bne -
+	pla
+	tay
+	pla
+	tax
+	pla
+	rts
+.delay_byte !byte 0
+
 wait_an_interval
 ; Delay a little for scrolling
 	ldx #interval_length*6/100
@@ -1901,7 +1940,29 @@ wait_a_sec
 	; bne -
 	rts
 } else {
+!ifdef TARGET_MEGA65 {
+kernal_delay_1ms
+	pha
+	txa
+	pha
+	tya
+	pha
+	ldy #40 ; 40 MHz
+-	ldx #$b8 ; 1 ms for 1 MHz
+--	dex
+	bne --
+	dey
+	bne -
+	pla
+	tay
+	pla
+	tax
+	pla
+	rts
+}
+
 !ifdef TARGET_X16 {
+
 kernal_delay_1ms
 	pha
 	txa
@@ -1928,11 +1989,7 @@ kernal_delay_1ms
 wait_a_sec
 ; Delay ~1.2 s so player can read the last text before screen is cleared
 	ldx #0
-!ifdef TARGET_MEGA65 {
-	ldy #40*5
-} else {
 	ldy #5
-}
 
 wait_yx_ms
 -	jsr kernal_delay_1ms
@@ -1945,15 +2002,24 @@ wait_yx_ms
 wait_an_interval
 ;	inc reg_bordercolour
 	; Used for scrolling
-!ifdef TARGET_MEGA65 {
-	ldx #(<(40 * interval_length + 256))
-	ldy #(>(40 * interval_length + 256))
-} else {
 	ldx #(<(interval_length + 256))
 	ldy #(>(interval_length + 256))
-}
 	jmp wait_yx_ms
 }
+
+wait_a_jiffy
+	pha
+	lda #17
+-	pha
+	jsr kernal_delay_1ms
+	pla
+	sec
+	sbc #1
+	bne -
+	pla
+	rts
+
+
 
 	
 
@@ -1993,7 +2059,7 @@ z_ins_restore_undo
 }
 
 reu_bank_for_undo
-!ifdef TARGET_MEGA65 {
+!ifdef TARGET_MEGA65_OR_X16 {
 	!byte $00 ; $00 means it's supported by default. May be changed to $ff at boot.
 } else {
 	!byte $ff 	; $ff means no undo. May be changed at boot. Meaning:
@@ -2115,8 +2181,160 @@ do_restore_undo
 	stx undo_state_available
 	rts
 	
+} else ifdef TARGET_X16 {
+do_save_undo
+	jsr .swap_pointers_for_save
+
+	; Copy zp + stack to from RAM to VRAM
+	; Calculate start address in RAM
+	lda #256 - zp_bytes_to_save
+	sta .read_stack + 1
+	lda #(>stack_start) - 1
+	sta .read_stack + 2
+	; Remember where stack ends
+	lda #>(stack_start + stack_size)
+	sta z_temp + 2 ; Stop when this page is reached
+
+	lda VERA_addr_bank
+	pha
+	lda #0
+	sta VERA_ctrl
+	sta VERA_addr_high
+	sta VERA_addr_low
+	lda #$10 ; Increment = 1, bank = 0
+	sta VERA_addr_bank
+	
+.read_stack
+	lda $8000 ; Self-modifying
+	sta VERA_data0
+	inc .read_stack + 1
+	bne .read_stack
+	inc .read_stack + 2
+	lda .read_stack + 2
+	cmp z_temp + 2
+	bne .read_stack
+	
+	; Copy dynmem from RAM to VRAM
+	; Set start address in RAM
+	lda #0
+	sta z_temp
+	sta z_temp + 2 ; Z-code page
+	lda #$5f
+	sta z_temp + 1
+	; Remember pagecount for dynmem
+	ldx nonstored_pages
+
+.read_dynmem
+	lda (z_temp),y
+	sta VERA_data0
+	iny
+	bne .read_dynmem
+
+	; Next page
+	dex
+	beq ++ ; No more pages to copy!
+	inc z_temp + 1
+	inc z_temp + 2
+	lda z_temp + 2
+	and #%00011111
+	bne .read_dynmem
+
+	; We are entering a new 8KB block, so we need to calculate bank
+	lda z_temp + 2
+	sta mempointer
+	lda #0
+	sta mempointer + 1
+	jsr x16_prepare_bankmem
+	lda mempointer + 1
+	sta z_temp + 1
+	bne .read_dynmem ; Always branch
+
+++	pla
+	sta VERA_addr_bank
+	
+	jsr .swap_pointers_for_save
+    ldx #1
+	stx undo_state_available
+	rts
+
+do_restore_undo
+	jsr .swap_pointers_for_save
+
+	; Copy zp + stack from VRAM to RAM
+	; Calculate start address in RAM
+	lda #256 - zp_bytes_to_save
+	sta .write_stack + 1
+	lda #(>stack_start) - 1
+	sta .write_stack + 2
+	; Remember where stack ends
+	lda #>(stack_start + stack_size)
+	sta z_temp + 2 ; Stop when this page is reached
+
+	lda VERA_addr_bank
+	pha
+	lda #0
+	sta VERA_ctrl
+	sta VERA_addr_high
+	sta VERA_addr_low
+	lda #$10 ; Increment = 1, bank = 0
+	sta VERA_addr_bank
+
+-	lda VERA_data0	
+.write_stack
+	sta $8000 ; Self-modifying
+	inc .write_stack + 1
+	bne -
+	inc .write_stack + 2
+	lda .write_stack + 2
+	cmp z_temp + 2
+	bne -
+	
+	; Copy dynmem from VRAM to RAM
+	; Set start address in RAM
+	lda #0
+	sta z_temp
+	sta z_temp + 2 ; Current Z-code page
+	lda #$5f
+	sta z_temp + 1
+	; Remember pagecount for dynmem
+	ldx nonstored_pages
+
+.write_dynmem
+	lda VERA_data0
+	sta (z_temp),y
+	iny
+	bne .write_dynmem
+
+	; Next page
+	dex
+	beq ++ ; No more pages to copy!
+	inc z_temp + 1
+	inc z_temp + 2
+	lda z_temp + 2
+	and #%00011111
+	bne .write_dynmem
+
+	; We are entering a new 8KB block, so we need to calculate bank
+	lda z_temp + 2
+	sta mempointer
+	lda #0
+	sta mempointer + 1
+	jsr x16_prepare_bankmem
+	lda mempointer + 1
+	sta z_temp + 1
+	bne .write_dynmem ; Always branch
+
+++
+	pla
+	sta VERA_addr_bank
+
+    ldx #0
+	stx undo_state_available
+	jsr .swap_pointers_for_save
+ 	jmp get_page_at_z_pc
+
 } else {
-	; Not MEGA65, so this is for C64/C128
+	; C64/C128
 
 !ifdef UNDO_RAM {
 ram_undo_page !byte $ff ; Set during init, if RAM undo is to be used
@@ -2268,12 +2486,10 @@ do_restore_undo
 }
 
 .finalize_restore_undo
-	jsr .swap_pointers_for_save
-	jsr get_page_at_z_pc
-
     ldx #0
 	stx undo_state_available
-	rts
+	jsr .swap_pointers_for_save
+	jmp get_page_at_z_pc
 
 .setup_transfer_stack
 	; ; save zp variables + stack

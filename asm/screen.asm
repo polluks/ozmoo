@@ -103,6 +103,7 @@ init_screen_colours
 	sta .more_access4 + 1
 }
 	; colours
+!ifdef NODARKMODE {
 	lda zcolours + FGCOL
 !if BORDERCOL_FINAL = 1 {
 	+SetBorderColour
@@ -133,16 +134,22 @@ init_screen_colours
 	ldy #header_default_fg_colour
 	jsr write_header_byte
 }
-	lda #147 ; clear screen
-	jsr s_printchar
-!ifndef NODARKMODE {
+} else { ; Darkmode is available
 	lda darkmode
-	beq +
-	dec darkmode
-	jmp toggle_darkmode
-+	
+	eor #1
+	sta darkmode
+	jsr toggle_darkmode
 }
-	rts	
+	lda #147 ; clear screen
+	jmp s_printchar
+; !ifndef NODARKMODE {
+	; lda darkmode
+	; beq +
+	; dec darkmode
+	; jmp toggle_darkmode
+; +	
+; }
+;	rts	
 
 !ifdef Z4PLUS {
 z_ins_erase_window
@@ -478,8 +485,9 @@ z_ins_set_cursor
 	ldy current_window
 	beq .do_nothing_2
 	ldx z_operand_value_low_arr ; line 1..
+	beq + ; If line is 0, it's a mistake - they mean line 1.
 	dex ; line 0..
-	ldy z_operand_value_low_arr + 1 ; column
++	ldy z_operand_value_low_arr + 1 ; column
 	dey
 	jmp set_cursor
 }
@@ -601,24 +609,32 @@ show_more_prompt
 	tya
 	and #1
 	beq +
-!ifdef TARGET_X16 {
+!ifdef TARGET_C128 {
+	bit COLS_40_80
+	bpl +++
+	; 80 columns
+	jsr vdc_hide_more
+	jmp ++
+	; 40 columns
++++	ldx reg_backgroundcolour
+} else ifdef TARGET_X16 {
 	jsr vera_hide_more
 	jmp ++
 } else {
 	ldx reg_backgroundcolour
 }
 +
-!ifdef TARGET_X16 {
+!ifdef TARGET_C128 {
+	bit COLS_40_80
+	bpl ++
+	; 80 columns
+	jsr vdc_show_more
+} else ifdef TARGET_X16 {
 	jsr vera_show_more
 }
 ++
 !ifdef TARGET_MEGA65 {
 	jsr colour2k
-}
-!ifdef TARGET_C128 {
-    bit COLS_40_80
-    bmi .check_for_keypress
-    ; Only show more prompt in C128 VIC-II screen
 }
 .more_access3
 !ifndef TARGET_X16 {
@@ -632,13 +648,7 @@ show_more_prompt
 .check_for_keypress
 	ldx #40
 ---
-!ifdef TARGET_X16 {
-	lda #0
-	sta 0 ; Bank in timer
-}
-	lda ti_variable + 2 ; $a2
--	cmp ti_variable + 2 ; $a2
-	beq -
+	jsr wait_a_jiffy
 	jsr getchar_and_maybe_toggle_darkmode
 	cmp #0
 	bne +
@@ -869,6 +879,10 @@ print_line_from_buffer
 printchar_buffered
 	; a is PETSCII character to print
 	sta .buffer_char
+	cmp #13
+	beq +
+	sta anything_printed
++	
 	; need to save x,y
 	txa
 	pha
@@ -1011,6 +1025,7 @@ printchar_buffered
 	pla
 	tax
 	rts
+anything_printed       !byte 0
 .buffer_char       !byte 0
 ; print_buffer            !fill 41, 0
 .save_x			   !byte 0
@@ -1107,6 +1122,17 @@ draw_status_line
 	lda #16
 	jsr z_get_low_global_variable_value
 	jsr print_obj
+
+	; Make sure cursor is on top row
+	sec
+	jsr s_plot
+	cpx #0
+	beq +
+	; Cursor was moved down (object name probably contains a newline character). Put cursor on top row again.
+	ldx #0
+	clc
+	jsr s_plot
++
 	;
 	; fill the rest of the line with spaces
 	;
@@ -1160,10 +1186,7 @@ draw_status_line
 	bne - ; Always branch
 .print_score_number
 	lda #17
-	jsr z_get_low_global_variable_value
-	stx z_operand_value_low_arr
-	sta z_operand_value_high_arr
-	jsr z_ins_print_num
+	jsr print_low_global_variable_value
 !ifdef SUPPORT_80COL {
 	ldy sl_moves_pos
 !ifdef TARGET_X16 {
@@ -1187,10 +1210,7 @@ draw_status_line
 	jsr s_printchar
 }
 	lda #18
-	jsr z_get_low_global_variable_value
-	stx z_operand_value_low_arr
-	sta z_operand_value_high_arr
-	jsr z_ins_print_num
+	jsr print_low_global_variable_value
 .all_done_score_sl
 	pla
 	sta z_operand_value_high_arr + 1

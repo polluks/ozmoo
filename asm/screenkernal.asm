@@ -21,8 +21,10 @@
 colour_petscii !byte 144,5,28,159,156,30,31,158,129,149,150,151,152,153,154,155
 }
 zcolours	!byte $ff,$ff ; current/default colour
-			!byte COL2,COL3,COL4,COL5  ; black, red, green, yellow
-			!byte COL6,COL7,COL8,COL9  ; blue, magenta, cyan, white
+			!byte 0,2,5,7  ; black, red, green, yellow
+			!byte 6,4,3,1  ; blue, magenta, cyan, white
+			!byte $ff,$ff,$ff,$ff,$ff,$ff ; Colour 10-15 are unused
+			!byte 8,9,10,11,12,13,14,15 ; Colour 16-23 are C64 colours 8-15
 darkmode	!byte 0
 bgcol		!byte BGCOL, BGCOLDM
 fgcol		!byte FGCOL, FGCOLDM
@@ -1308,7 +1310,11 @@ turn_off_cursor
 
 update_cursor
     sty object_temp
+	jsr .update_screenpos
     ldy zp_screencolumn
+	bmi .skip_cursor_update
+	cpy s_screen_width
+	bcs .skip_cursor_update
     lda s_cursorswitch
     bne +++
     ; no cursor
@@ -1330,6 +1336,7 @@ update_cursor
 	lda s_colour
 	pha
 	lda current_cursor_colour
+	and #15
 	jsr VERASetForegroundColour
 	lda cursor_character
 	jsr VERAPrintChar
@@ -1359,8 +1366,22 @@ update_cursor
 
 .vdc_printed_char_and_colour
 
+.skip_cursor_update
     ldy object_temp
     rts
+
+write_default_colours_to_header
+	; On exit:
+	; a = fg colour (2-9)
+	; x = darkmode
+	; y = destroyed
+	ldx darkmode
+	lda bgcol,x
+	ldy #header_default_bg_colour
+	jsr write_header_byte
+	lda fgcol,x
+	ldy #header_default_fg_colour
+	jmp write_header_byte
 
 !ifndef NODARKMODE {
 
@@ -1431,7 +1452,6 @@ toggle_darkmode
 } ; else (not Z5PLUS)
 
 
-
 ; Toggle darkmode
 	lda darkmode
 	eor #1
@@ -1457,10 +1477,13 @@ toggle_darkmode
 
 } ; USE_INPUTCOL	
 	
+; Write colours to header
+	jsr write_default_colours_to_header	
+	
 ; Set fgcolour
-	lda fgcol,x
-	ldy #header_default_fg_colour
-	jsr write_header_byte
+;	ldy fgcol,x
+	; ldy #header_default_fg_colour
+	; jsr write_header_byte
 	tay
 	lda zcolours,y
 	sta .new_fg_c64 ; New foreground colour, as C64 colour 
@@ -1489,10 +1512,10 @@ toggle_darkmode
 	lda zcolours,y
 +	sta current_cursor_colour
 ; Set bgcolour
-	lda bgcol,x
-	ldy #header_default_bg_colour
-	jsr write_header_byte
-	tay
+	ldy bgcol,x
+	; ldy #header_default_bg_colour
+	; jsr write_header_byte
+	; tay
 	lda zcolours,y
 !ifdef Z5PLUS {
 	; We will need the new bg colour later, to check which characters would become invisible if left unchanged
@@ -1568,7 +1591,6 @@ toggle_darkmode
 ; ---------- CHANGE COLOURS IN MAIN WINDOW (both for Z4+)
 
 !ifdef TARGET_X16 {
-kaffe
 	lda s_screen_height_minus_one
 	sta zp_screenline + 1
 --	ldy #0

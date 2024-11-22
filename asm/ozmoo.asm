@@ -17,6 +17,10 @@
 }
 }
 
+!ifndef FREE_SAVE_BLOCKS {
+	FREE_SAVE_BLOCKS = 664  ; Default to the free space of an empty 1541 disk
+}
+
 !ifdef TARGET_X16 {
 	TARGET_MEGA65_OR_X16 = 1
 	NO_VMEM_CACHE = 1
@@ -185,32 +189,6 @@
 	stack_size = STACK_PAGES * $100;
 } else {
 	stack_size = $0400;
-}
-
-
-!ifndef COL2 {
-	COL2 = 0
-}
-!ifndef COL3 {
-	COL3 = 2
-}
-!ifndef COL4 {
-	COL4 = 5
-}
-!ifndef COL5 {
-	COL5 = 7
-}
-!ifndef COL6 {
-	COL6 = 6
-}
-!ifndef COL7 {
-	COL7 = 4
-}
-!ifndef COL8 {
-	COL8 = 3
-}
-!ifndef COL9 {
-	COL9 = 1
 }
 
 !ifndef BGCOL {
@@ -1966,7 +1944,6 @@ deletable_init_start
 }
 	lda #0
 	sta mempointer
-
 	jmp init_screen_colours ; _invisible
 	
 
@@ -2055,6 +2032,16 @@ deletable_init
 ++
 }
 
+!ifdef UNDO {
+	clc
+	lda #(>stack_size) + 1
+	adc nonstored_pages
+	bcc + ; Dynmem + stack + ZP fits in 64 KB
+	ldy #$ff
+	sty reu_bank_for_undo ; Disable undo
+	jsr print_no_undo
++
+}
 	lda #0
 	sta reu_last_disk_end_block
 	sta reu_last_disk_end_block + 1
@@ -2243,20 +2230,34 @@ deletable_init
 } else {
 	ldy #header_static_mem
 	jsr read_header_word ; Note: This does not work on C128, but we don't support non-vmem on C128!
-	ldx #$30 ; First unavailable slot
 	clc
-	adc #(>stack_size) + 4
+	adc #(>stack_size) + 1 ; For PC etc
 	sta zp_temp
-	lda #>664
+	sta zp_temp + 2
+	lda #0
+	adc #0
+	tay
+;	sta zp_temp + 1
+	; Add overhead due to blocks holding 254 bytes of data, not 256
+	asl zp_temp + 2
+	rol
+	adc zp_temp ; Carry already clear
+	sta zp_temp
+;	lda zp_temp + 1
+	tya
+	adc #0
 	sta zp_temp + 1
-	lda #<664
+	lda #>FREE_SAVE_BLOCKS
+	sta zp_temp + 2
+	lda #<FREE_SAVE_BLOCKS
+	ldx #$30 ; First unavailable slot
 .one_more_slot
 	sec
 	sbc zp_temp
 	tay
-	lda zp_temp + 1
-	sbc #0
-	sta zp_temp + 1
+	lda zp_temp + 2
+	sbc zp_temp + 1
+	sta zp_temp + 2
 	bmi .no_more_slots
 	inx
 	cpx #$3a
@@ -2295,10 +2296,7 @@ deletable_init
 	jsr init_screen_colours
 }
 !ifdef TARGET_X16 {
-	bit m65_x16_statmem_already_loaded
-	bmi + 
 	jsr init_screen_colours
-+
 }
 	
 !ifdef VMEM {
@@ -2339,6 +2337,7 @@ deletable_init
 
 !ifdef TARGET_C128 {
 	jsr c128_move_dynmem_and_calc_vmem
+	jsr init_screen_colours
 }
 
 	jsr prepare_static_high_memory

@@ -500,7 +500,6 @@ read_byte_at_z_address
 	bit reu_boost_mode
 	bmi .boost
 	jmp .no_boost
-hej
 .boost
 	lda zp_pc_h
 	clc
@@ -987,7 +986,7 @@ hej
 	adc #>vmem_cache_start
 	sta mempointer + 1
 	ldx vmap_index
-	bne .return_result ; always true
+	bcc .return_result ; always true
 .unswappable
 } ; not TARGET_PLUS4
 
