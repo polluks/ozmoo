@@ -688,6 +688,9 @@ z_ins_restart
 	; must select memory under $4000 (basic)
 	!pet "sY4e3",13,0
 .restart_code_address = 4000
+} else ifdef TARGET_X16 {
+	!pet "sY1800",13,0
+.restart_code_address = 1800
 } else {
 	!pet "sY3e4",13,0
 .restart_code_address = 30000 ; $7530
@@ -1785,7 +1788,7 @@ do_save
 .save_msg	!pet 13,"Saving...",13,0
 .restore_msg	!pet 13,"Restoring...",13,0
 .restore_filename !pet $5d,"0*" ; 0 will be changed to selected slot
-.erase_cmd !pet "s:!0*" ; 0 will be changed to selected slot
+.erase_cmd !pet "s:]0*" ; 0 will be changed to selected slot
 .swap_pointers_for_save
 	ldx #zp_bytes_to_save - 1
 -	lda zp_save_start,x
