@@ -167,9 +167,13 @@ z_ins_get_prop_len
 	jmp z_store_result
 
 .zp_object = zp_mempos
-.zp_parent = object_tree_ptr  ; won't be used at the same time
-.zp_sibling = object_tree_ptr ; won't be used at the same time
-.zp_dest = object_tree_ptr    ; won't be used at the same time
+
+; These won't be used at the same time, so can use same address (2 bytes),
+; which must be object_tree_ptr
+.zp_parent = object_tree_ptr
+.zp_sibling = object_tree_ptr
+.zp_dest = object_tree_ptr
+
 ; .object_num !byte 0,0
 .parent_num !byte 0,0
 .child_num !byte 0,0
@@ -831,17 +835,21 @@ find_first_prop
 	cpx #0
 	bne +
 	rts ; 0,0: no prop block exists, do nothing
-+	jsr read_next_byte ; length of object short name (# of zchars)
++	jsr read_next_byte ; length of object short name (# of string words)
 	; skip short name (2 * bytes, since in words)
+	asl
+	bcc .skip_name_bytes
+	; Object name is super long ( 128+ words)
+	ror
 	pha ; a is destroyed by skip_bytes_z_address
 	jsr skip_bytes_z_address
 	pla
+.skip_name_bytes
 	jmp skip_bytes_z_address
 
 find_prop
 	; call find_first_prop before calling find_prop
 	; output: x,a = address to property block, or 0,0 if not found
-	; (also stored in .find_prop_result)
 	; loop over the properties until the correct one found
 	jsr get_z_address
 	bne .property_loop
@@ -859,16 +867,11 @@ find_prop
 	jmp .property_loop
 .find_prop_not_found
 	ldx #0
-	lda #0
-	stx .find_prop_result
-	sta .find_prop_result + 1
+	txa
 	rts
 .find_prop_found
 	jsr get_z_address
-	stx .find_prop_result
-	sta .find_prop_result + 1
 	rts
-.find_prop_result !byte 0,0 ; x,a
 
 z_ins_get_prop
 	; get_prop object property -> (result)
@@ -1024,6 +1027,10 @@ calculate_object_address
 !ifndef Z4PLUS {
 	; To get address, multiply by 9 (Calculate 8 * obj# + obj#)
 ;	dex ;  (object_start_ptr points 9 bytes before first obj, so no need for dex)
+.calc_cmp_1
+	cpx #0
+	beq .done_calc
+	stx .calc_cmp_1 + 1
 
 	stx object_tree_ptr
 	lda #0
@@ -1057,6 +1064,15 @@ calculate_object_address
 ;	bne +
 ;	sbc #1
 ;+	
+.calc_cmp_1
+	cpx #0
+	bne +
+.calc_cmp_2
+	cmp #0
+	beq .done_calc
++	stx .calc_cmp_1 + 1
+	sta .calc_cmp_2 + 1
+
 	stx object_temp
 	sta object_temp + 1
 	sta object_tree_ptr + 1
@@ -1085,5 +1101,6 @@ calculate_object_address
 	adc objects_start_ptr + 1
 	sta object_tree_ptr + 1
 }
+.done_calc
 	rts
 	
