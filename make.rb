@@ -93,6 +93,7 @@ $GENERALFLAGS = [
 #	'NO_DEFAULT_UNICODE_MAP' # Disables the default unicode output map, saving 83 bytes
 #	'VICE_TRACE', # Send the last instructions executed to Vice, to aid in debugging
 #	'TRACE', # Save a trace of the last instructions executed, to aid in debugging
+#	'OPTIMIZE_VMEM', # Continuously move the most used vmem blocks to unbanked RAM (C64/C128)
 #	'COUNT_SWAPS', # Keep track of how many vmem block reads have been done.
 #	'TIMING', # Store the lowest word of the jiffy clock in 0-->2 in the Z-code header
 #	'UNDO', # Support UNDO (using REU)
@@ -103,12 +104,13 @@ $GENERALFLAGS = [
 $DEBUGFLAGS = [
 #	'DEBUG', # This gives some debug capabilities, like informative error messages. It is automatically included if any other debug flags are used.
 #	'VIEW_STACK_RECORDS',
-#	'PRINTSPEED'
+#	'PRINTSPEED',
 #	'BENCHMARK', # This can now be enabled with -bm
 #	'VMEM_STRESS', # very slow but gives vmem a workout
 #	'TRACE_FLOPPY',
 #	'TRACE_VM',
 #	'PRINT_SWAPS',
+#	'PRINT_VMEM_OPT', # Print index of vmem blocks swapped, when OPTIMIZE_VMEM is active
 #	'TRACE_FLOPPY_VERBOSE',
 #	'TRACE_PRINT_ARRAYS',
 #	'TRACE_PROP',
@@ -2359,7 +2361,7 @@ end
 def print_usage
 	puts "Usage: make.rb [-t:target] [-S1|-S2|-D2|-D3|-71|-71D|-81|-P|-ZIP] -v"
 	puts "         [-p:[n]] [-b] [-o] [-c <preloadfile>] [-cf <preloadfile>]"
-	puts "         [-bm] [-sp:[n]] [-re[:0|1]] [-sl[:0|1]] [-s] " 
+	puts "         [-bm] [-sp:[n]] [-re[:0|1]] [-sl[:0|1]] [-vo[:0|1]] [-s] " 
 	puts "         [-fn:<name>] [-f <fontfile>] [-cm:[xx]] [-um[:0|1]] [-in:[n]]"
 	puts "         [-i <imagefile>] [-if <imagefile>] [-ch[:n]] [-sb[:0|1|6|8|10|12]] [-rb[:0|1]]"
 	puts "         [-fgcol:<colourname>] [-bgcol:<colourname>] [-bordercol:<colourname>]"
@@ -2382,7 +2384,8 @@ def print_usage
 	puts "  -bm: Build interpreter in Benchmark Mode. There must be a valid walkthrough in benchmarks.json."
 	puts "  -sp: Use the specified number of pages for stack (2-64, default is 4)."	
 	puts "  -re: Perform all checks for runtime errors, making code slightly bigger and slower."
-	puts "  -sl: Remove some optimizations for speed. This makes the terp ~100 bytes smaller."
+	puts "  -sl: Remove some optimizations for speed. This saves ~100 bytes smaller."
+	puts "  -vo: Continuous virtual memory optimization (C64/C128 only). Enabled by defult. Disabling saves ~500 bytes."
 	puts "  -s: start game in emulator if build succeeds"
 	puts "  -fn: boot file name (default: story)"
 	puts "  -f: Embed the specified font with the game. See docs for details."
@@ -2396,10 +2399,10 @@ def print_usage
 	puts "  -rb: Enable the REU Boost feature. Enabled by default. Takes up 155 bytes."
 	puts "  -fgcol/dmfgcol: Use the specified foreground colour. See docs for details."
 	puts "  -bgcol/dmbgcol: Use the specified background colour. See docs for details."
-	puts "  -bordercol/dmbordercol: Use the specified border colour. 0=same as bg, 1=same as fg. See docs for details."
+	puts "  -bordercol/dmbordercol: Use the specified border colour. bg=same as bg, fg=same as fg. See docs for details."
 	puts "  -statuscol/dmstatuscol Use the specified status line colour. Only valid for Z3 games. See docs for details."
 	puts "  -inputcol/dminputcol: Use the specified input colour. Only valid for Z3 and Z4 games. See docs for details."
-	puts "  -cursorcol/dmcursorcol: Use the specified cursor colour. (1=same as fg (default)). See docs for details."
+	puts "  -cursorcol/dmcursorcol: Use the specified cursor colour. (fg=same as fg (default)). See docs for details."
 	puts "  -dm: Enable the ability to switch to dark mode"
 	puts "  -ss1, -ss2, -ss3, -ss4: Add up to four lines of text to the splash screen."
 	puts "  -sw: Set the splash screen wait time (1-999 s), or 0 to disable splash screen."
@@ -2493,6 +2496,7 @@ reu_boost = nil
 x_for_examine = nil
 write_signature = nil
 username = nil
+optimize_vmem = nil
 
 begin
 	ARGV.each do |arg|
@@ -2676,6 +2680,12 @@ begin
 			else
 				$GENERALFLAGS.push('SLOW') unless $GENERALFLAGS.include?('SLOW') 
 			end
+		elsif arg =~ /^-vo(?::([0-1]))?$/ then
+			if $1 == nil
+				optimize_vmem = 1
+			else
+				optimize_vmem = $1.to_i
+			end
 		elsif arg =~ /^-bm$/ then
 			$DEBUGFLAGS.push('BENCHMARK') unless $DEBUGFLAGS.include?('BENCHMARK')
 		elsif arg =~ /^-dm(?::([01]))?$/ then
@@ -2768,6 +2778,25 @@ if reu_boost == 1
 	$GENERALFLAGS.push('REUBOOST') unless $GENERALFLAGS.include?('REUBOOST')
 	if $target !~ /^c(64|128)$/
 		puts "ERROR: REU Boost is not supported for this target platform." 
+		exit 1
+	end
+end
+
+if $target =~ /^(c64|c128)$/ and optimize_vmem == nil and mode != MODE_P
+	optimize_vmem = 1
+end
+if optimize_vmem == 1
+	$GENERALFLAGS.push('OPTIMIZE_VMEM') unless $GENERALFLAGS.include?('OPTIMIZE_VMEM') 
+	if $target !~ /^(c64|c128)$/ 
+		puts "ERROR: Continuous virtual memory optimization is not supported for this target platform." 
+		exit 1
+	end
+	if mode == MODE_P
+		puts "ERROR: Continuous virtual memory optimization can't be used with build mode P." 
+		exit 1
+	end
+	if $CACHE_PAGES < 3 
+		puts "ERROR: Continuous virtual memory optimization requires at least 3 pages of vmem cache, please set $CACHE_PAGES to a higher value." 
 		exit 1
 	end
 end

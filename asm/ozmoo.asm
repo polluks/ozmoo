@@ -1071,10 +1071,13 @@ game_id		!byte 0,0,0,0
 	lda #use_2mhz_in_80_col_in_game_value
 	sta use_2mhz_in_80_col
 	sta reg_2mhz	;CPU = 2MHz
-	lda $d011
-	; Clear top bit (to not break normal interrupt) and bit 4 to blank screen 
-	and #%01101111
-	sta $d011
+
+	; Moved this to deletable_screen_init_1
+	; lda $d011
+	; ; Clear top bit (to not break normal interrupt) and bit 4 to blank screen 
+	; and #%01101111
+	; sta $d011
+
 	jmp ++
 +	; 40 columns mode
 !ifndef SMOOTHSCROLL {
@@ -1360,6 +1363,13 @@ c128_move_dynmem_and_calc_vmem
 	lda #>story_start
 	sta vmap_first_ram_page
 
+	; Calculate # of pages of unbanked RAM used for vmem
+	lda #first_banked_memory_page
+	sec
+	sbc vmap_first_ram_page
+	lsr
+	sta vmap_unbanked_blocks
+	
 	; Remember above which index in vmem the blocks are in bank 1
 !ifdef SCROLLBACK_RAM_PAGES {
 	lda #SCROLLBACK_RAM_START_PAGE
@@ -1595,6 +1605,17 @@ font_read_error
 deletable_screen_init_1
 	; start text output from bottom of the screen
 
+!ifdef TARGET_C128 {
+	bit COLS_40_80
+	bpl +
+	; 80 columns mode
+	lda $d011
+	; Clear top bit (to not break normal interrupt) and bit 4 to blank screen 
+	and #%01101111
+	sta $d011
++
+}
+
 !ifdef TARGET_X16 {
 !ifdef CUSTOM_FONT {
 	lda #fontfile_name_len
@@ -1616,21 +1637,6 @@ deletable_screen_init_1
 }
 }
 
-!ifndef Z4PLUS {
-	!ifdef TARGET_C128 {
-		bit COLS_40_80
-		bpl .width40
-		; 80 col
-		lda #52
-		sta sl_score_pos
-		lda #66
-		sta sl_moves_pos
-		lda #60
-		sta sl_time_pos
-.width40
-		; Default values are correct, nothing to do here.
-	}
-}
 	+init_screen_model
 	rts
 
@@ -1639,6 +1645,17 @@ deletable_screen_init_2
 	jsr toggle_smoothscroll
 }
 	; clear and unsplit screen, start text output from bottom of the screen (top of screen if z5)
+!ifndef Z5PLUS {
+!ifdef TARGET_PLUS4 {
+!ifdef VMEM {
+	; Statusline is filled with contents of config blocks,
+	; and erase_window below doesn't touch statusline
+	lda #0
+	sta zp_screenrow
+    jsr s_erase_line
+}
+}
+}
 	ldy #1
 	sty is_buffered_window
 	ldx #$ff
@@ -2313,11 +2330,27 @@ deletable_init
 ; .store_nonstored_pages
 	; sty nonstored_pages
 	; tya
+
+!ifndef TARGET_C128 {
+
+; On C128, this is calculated in c128_move_dynmem_and_calc_vmem,
+; called a few lines down
+
 	lda nonstored_pages
-	
 	clc
 	adc #>story_start
 	sta vmap_first_ram_page
+
+!ifndef TARGET_PLUS4 {
+	; Calculate # of pages of unbanked RAM used for vmem
+	lda #first_banked_memory_page
+	sec
+	sbc vmap_first_ram_page
+	lsr
+	sta vmap_unbanked_blocks
+}
+}
+
 !ifdef SCROLLBACK_RAM_PAGES {
 	lda #SCROLLBACK_RAM_START_PAGE
 } else {
@@ -2672,7 +2705,7 @@ reu_start
 ;	lda #0 ; SKIP REU FOR DEBUGGING PURPOSES
 	sta reu_banks
 	cmp statmem_reu_banks
-	bcc .no_reu_present ; REU is too small to cache this game
+	bcc .dont_cache_to_reu ; REU is too small to cache this game
 
 	lda #>.use_reu_question
 	ldx #<.use_reu_question
@@ -2682,6 +2715,7 @@ reu_start
 	beq .dont_cache_to_reu
 	cmp #89
 	bne -
+	inc reu_bank_for_page_copying ; Change from $ff to $00
 	ldx #$80 ; Use REU, set vmem to reu loading mode
 	stx use_reu
 !ifdef UNDO {
@@ -2707,6 +2741,11 @@ reu_start
 	ldx #0
 	stx reu_bank_for_undo
 }
+	ldx #3
+	cpx reu_banks
+	bcs .no_reu_room_for_copying
+	stx reu_bank_for_page_copying
+.no_reu_room_for_copying
 	lda #78 + 128
 .print_reply_and_return
 	jsr s_printchar

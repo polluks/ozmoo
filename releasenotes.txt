@@ -1,6 +1,32 @@
 RELEASE NOTES
 
 Upcoming release
+- Fixed incorrect text in usage screen in make.rb, saying values 0 and 1 mean background and foreground for -bordecol etc, when it's actually values bg and fg now.
+- Disabled run/stop key in image loader program, on C64.
+- Fixed garbage showing on top screen row when enabling darkmode at first MORE prompt in z1-z4 game with initial text longer than a screenful, on Plus/4 build with virtual memory.
+
+================================================
+Release 15.5: 2 Mar 2026
+
+- Fixed bug: On C128, if there was a page in the vmem cache, which belongs to the vmem block we decide to throw out, and the block was below $d000 in bank 1, the page index wasn't updated to reflect that the page became invalid, which could lead to the program crashing.
+- Slight optimizations in code for virtual memory optimization.
+- Changed statusline (z1-z3) to show "99:999" or "12:34 PM" for 32 column screen, nothing for 20-22 column screen, "Sc: 99 Mv:999" for 40 column screen.
+- Optimized statusline (z1-z3) so it doesn't print spaces where score/moves will be printed anyway.
+- 40 column screen was showing streaks of garbage during initial loading of game data, when launching game in 80 column mode on C128, if not caching to REU.
+- Turned subroutines into macros for performance in text.asm: convert_zchar_to_char, get_next_zchar, init_get_zchar, was_last_zchar.
+- Reversed numbering of chars in a zchar triplet when decoding strings, so first char is #2 and last char is #0, as this makes for shorter, faster code.
+- Optimized convert_zchar_to_char and translate_zscii_to_petscii.
+
+================================================
+Release 15: 22 Feb 2026
+	
+- Added option for continuous virtual memory optimization on C64 and C128 - switch little used vmem blocks in unbanked RAM for much used vmem blocks in banked RAM, for performance. Enabled by default. Can be disabled with -vo:0. Cost 430 bytes on C64, 640 bytes on C128.
+- Use REU for fast copying even if REU caching not active, if REU is 256+ KB, on C64 and on C128 in 80 column mode.
+- Use a macro instead of a subroutine to read data at PC on C128 (like we already do on C64), for performance.
+- Fixed very old bug: If REU was too small to cache game, Undo was blocked from using REU.
+- Added tests/memcheck_c64.rb and memcheck_c128.rb to check a memory dump for virtual memory corruption. 
+- Changed some old error messages in make.rb, referring to command line options which have been renamed.
+- Updated tech report (and to a lesser extent, the manual).
 
 ================================================
 Release 14.64: 19 Jan 2026
